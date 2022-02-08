@@ -582,6 +582,53 @@ class QlLoaderELF(QlLoader):
                         ql.mem.write(prev_mips_hi16_loc + 2, ql.pack16(val >> 16))
                         ql.mem.write(loc + 2, ql.pack16(val & 0xFFFF))
 
+                    elif desc in ('R_ARM_CALL', 'R_ARM_JUMP24', 'R_ARM_PC24'):
+                        sym_st_value = rev_reloc_symbols[symbol_name]
+
+                        offset = (ql.mem.read_ptr(loc, 4) & 0x00FFFFFF) << 2
+
+                        if offset & 0x02000000:
+                            offset -= 0x04000000
+
+                        offset += (sym_st_value - loc) & 0xFFFFFFFF
+
+                        offset >>= 2
+
+                        data = (ql.mem.read_ptr(loc, 4) & 0xFF000000) | (offset & 0x00FFFFFF)
+
+                        ql.mem.write(loc, ql.pack32(data))
+
+                    elif desc in ('R_ARM_ABS32', 'R_ARM_TARGET1'):
+                        sym_st_value = rev_reloc_symbols[symbol_name]
+                        offset = ql.mem.read_ptr(loc, 4)
+                        offset += sym_st_value
+                        offset &= 0xFFFFFFFF
+                        ql.mem.write(loc, ql.pack32(offset))
+
+                    elif desc in ('R_ARM_MOVT_ABS', 'R_ARM_MOVW_ABS_NC'):
+                        sym_st_value = rev_reloc_symbols[symbol_name]
+
+                        offset = tmp = ql.mem.read_ptr(loc, 4)
+                        offset = ((offset & 0xF0000) >> 4) | (offset & 0xFFF)
+                        offset = (offset ^ 0x8000) - 0x8000
+
+                        offset += sym_st_value
+                        if desc == 'R_ARM_MOVT_ABS':
+                            offset >>= 16
+
+                        tmp &= 0xFFF0F000
+                        tmp |= ((offset & 0xF000) << 4) | (offset & 0x0FFF)
+                        ql.mem.write(loc, ql.pack32(tmp))
+
+                    elif desc == 'R_ARM_PREL31':
+                        sym_st_value = rev_reloc_symbols[symbol_name]
+                        offset = ql.mem.read_ptr(loc, 4) + sym_st_value - loc
+                        offset &= 0x7FFFFFFF
+                        ql.mem.write(loc, ql.pack32(offset))
+
+                    elif desc == 'R_ARM_NONE':
+                        pass
+
                     else:
                         raise NotImplementedError(f'Relocation type {desc} not implemented')
 
